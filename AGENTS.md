@@ -4,35 +4,112 @@
 
 ## Repo là gì
 
-H2Base — code base chuẩn cho **mọi webapp quản trị** (Next.js 16 App Router, React 19, TS strict, Tailwind v4). Khởi đầu từ TailAdmin đã refactor.
+H2Base — code base chuẩn cho **mọi webapp quản trị** (Next.js 16 App Router, React 19, TS strict, Tailwind v4, NestJS Backend, Prisma ORM). Kiến trúc **Vertical Slice** — mỗi module nghiệp vụ tự đóng gói 100%.
 
-## Cấu trúc — đặt file đúng chỗ ngay từ đầu
+## Kiến trúc Monorepo
 
 ```text
-src/app/          # routing only: pages, layouts, route handlers — không logic
-src/components/ui/      # UI primitives (button, table, form, chart, modal...)
-src/components/layout/  # khung admin: AppSidebar, AppHeader, nav-items
-src/components/shared/  # component dùng chung không phải primitive (Card, Breadcrumb...)
-src/features/<domain>/  # ★ module nghiệp vụ: components/ hooks/ types.ts index.ts
-src/hooks/        # cross-feature hooks
-src/context/      # providers toàn app
-src/lib/          # api-client, utils, constants (hạ tầng, không UI)
-src/server/actions/    # server actions theo domain (zod validate)
-src/types/        # type dùng chung toàn app
+apps/web/     # Next.js 16 — Frontend
+apps/api/     # NestJS — Backend
+packages/database/  # Prisma schema, migrations, seed
 ```
 
-Thêm nghiệp vụ mới: copy `src/features/_template/`, đăng ký 1 route trong `src/app/(admin)/`, thêm 1 entry trong `src/components/layout/nav-items.tsx`. Không sửa gì khác.
+## Cấu trúc Frontend — `apps/web/src/`
+
+```text
+src/app/                          # routing only: pages, layouts — KHÔNG logic
+  (admin)/<domain>/page.tsx       #   mỗi route import từ @/features/<domain>
+  (auth)/                         #   signin / signup
+  (error-pages)/                  #   404, 500
+
+src/features/                      # ★ module nghiệp vụ — vertical slice
+  _template/                      #   module mẫu rỗng (copy khi tạo mới)
+  <domain>/
+    components/                   #     UI components riêng module
+    hooks/                        #     hooks riêng module
+    api/                          #     API calls riêng module
+    actions/                      #     server actions riêng module ("use server" + zod)
+    types.ts                      #     types riêng module
+    constants.ts                  #     hằng số riêng module
+    index.ts                      #     ★ public API — bên ngoài chỉ import từ đây
+
+src/core/                         # hạ tầng dùng chung (KHÔNG nghiệp vụ)
+  ui/                             #   UI primitives: Button, Table, Modal, Form
+  layout/                         #   AppSidebar, AppHeader, nav-items
+  shared/                         #   components dùng chung: Card, Breadcrumb
+  hooks/                          #   cross-module hooks: useModal, useGoBack
+  context/                        #   providers toàn app: Sidebar, Theme
+  lib/                            #   api-client, utils, logger
+  types/                          #   types dùng chung toàn app
+  constants/                      #   hằng số toàn app
+```
+
+## Cấu trúc Backend — `apps/api/src/`
+
+```text
+src/features/                      # ★ module nghiệp vụ — vertical slice
+  _template/                      #   module mẫu rỗng
+  <domain>/
+    dto/                          #     Data Transfer Objects
+    entities/                     #     entity types
+    guards/                       #     guards riêng module
+    middlewares/                  #     middlewares riêng module
+    <domain>.controller.ts
+    <domain>.service.ts
+    <domain>.module.ts            #     NestJS module — self-contained
+    index.ts
+
+src/core/                         # hạ tầng dùng chung (KHÔNG nghiệp vụ)
+  auth/                           #   JWT, auth guard chung
+  config/                         #   env validation
+  database/                       #   Prisma service
+  filters/                        #   exception filters
+  interceptors/                   #   logging, transform
+  pipes/                          #   validation pipe
+  decorators/                     #   custom decorators
+  types/                          #   types dùng chung
+```
+
+## Cấu trúc Database — `packages/database/`
+
+```text
+prisma/schema/                    # Prisma schema chia theo module
+  base.prisma                     #   datasource + generator config
+  <domain>.prisma                 #   schema riêng từng module
+prisma/migrations/                # migration history
+prisma/seed/                      # seed data theo module
+```
+
+## Thêm module mới — 3 bước duy nhất
+
+1. Copy `features/_template/` → `features/<domain>/` ở cả `web` và `api`.
+2. Tạo route `apps/web/src/app/(admin)/<domain>/page.tsx` import từ module.
+3. Thêm 1 entry trong `apps/web/src/core/layout/nav-items.tsx`.
+
+Xóa module = xóa folder module + xóa route. Không chạm code ngoài.
 
 ## Quy tắc bắt buộc khi sinh code
 
 1. Import nội bộ **luôn** `@/...`. Không bao giờ `../` hay `../../`.
 2. Component: `PascalCase.tsx`, folder `kebab-case`, hook `useXxx.ts`.
-3. **Không `any`**, **không `console.*`** (lint error). Hằng số không trừ magic values — đặt tên.
-4. Server action: `"use server"` + zod `safeParse` + typed result (xem `src/server/actions/example.ts`).
-5. Gọi API phía client qua `api` từ `@/lib/api-client` — không viết fetch trần.
-6. Type dùng 1 nơi; module chỉ export qua `index.ts` public API.
-7. File > 250 dòng → tách. Feature không import feature.
-8. Trước khi claim xong: `npm run lint && npm run format:check && npm run build` đều phải pass.
+3. **Không `any`**, **không `console.*`** (lint error). Hằng số — đặt tên, không magic values.
+4. **Module KHÔNG import module.** Dùng chung → đưa vào `core/`.
+5. Server action: `"use server"` + zod `safeParse` + typed result — **đặt trong `features/<domain>/actions/`**.
+6. API call client: **đặt trong `features/<domain>/api/`**, dùng `api-client` từ `@/core/lib/api-client`.
+7. Type dùng 1 nơi: riêng module → `features/<domain>/types.ts`; dùng chung → `core/types/`.
+8. File > 250 dòng → tách. Module chỉ export qua `index.ts` public API.
+9. Trước khi claim xong: `npm run lint && npm run format:check && npm run build` đều phải pass.
+
+## Phụ thuộc một chiều
+
+```text
+app/(routes) → features/<domain> → core/(ui | lib | hooks | types | context)
+
+modules KHÔNG import modules
+core    KHÔNG import modules
+```
+
+Vi phạm → ESLint `import/no-cycle` báo lỗi.
 
 ## Luồng việc
 

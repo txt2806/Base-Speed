@@ -40,7 +40,8 @@ actions.push(`package.json name -> "${appName}"`);
 
 // .env.local: tạo/mở rộng NEXT_PUBLIC_APP_NAME
 const envPath = path.join(ROOT, ".env.local");
-const envExample = readFileSync(path.join(ROOT, ".env.example"), "utf-8");
+const envExamplePath = path.join(ROOT, ".env.example");
+const envExample = existsSync(envExamplePath) ? readFileSync(envExamplePath, "utf-8") : "";
 let envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : envExample;
 if (!isDryRun) {
   if (envContent.includes("NEXT_PUBLIC_APP_NAME=")) {
@@ -53,19 +54,19 @@ if (!isDryRun) {
 actions.push(`.env.local NEXT_PUBLIC_APP_NAME -> "${appName}"`);
 
 // ---------- 2. Reset dashboard về trang trắng ----------
-const adminHome = path.join(ROOT, "src", "app", "(admin)", "page.tsx");
-const blankPage = path.join(ROOT, "src", "app", "(admin)", "blank", "page.tsx");
+const adminHome = path.join(ROOT, "apps", "web", "src", "app", "(admin)", "page.tsx");
+const blankPage = path.join(ROOT, "apps", "web", "src", "app", "(admin)", "blank", "page.tsx");
 if (existsSync(adminHome) && existsSync(blankPage)) {
   if (!isDryRun) {
     copyFileSync(adminHome, `${adminHome}.bak`);
     const blankContent = readFileSync(blankPage, "utf-8");
     writeFileSync(adminHome, blankContent.replace(/Blank Page/g, "Dashboard"));
   }
-  actions.push("src/app/(admin)/page.tsx -> dashboard trống (backup .page.tsx.bak)");
+  actions.push("apps/web/src/app/(admin)/page.tsx -> dashboard trống (backup .page.tsx.bak)");
 }
 
 // ---------- 3. Liệt kê demo modules (dry-run — KHÔNG tự xóa) ----------
-const featuresDir = path.join(ROOT, "src", "features");
+const featuresDir = path.join(ROOT, "apps", "web", "src", "features");
 const demoModules = existsSync(featuresDir)
   ? readdirSync(featuresDir).filter((d) => {
       if (d.startsWith("_")) return false;
@@ -77,8 +78,9 @@ const demoModules = existsSync(featuresDir)
     })
   : [];
 
-const adminDir = path.join(ROOT, "src", "app", "(admin)");
+const adminDir = path.join(ROOT, "apps", "web", "src", "app", "(admin)");
 const routesFor = (feature) => {
+  if (!existsSync(adminDir)) return [];
   const candidates = [feature, feature.replace(/-/g, "")];
   return readdirSync(adminDir).filter((d) => candidates.includes(d));
 };
@@ -91,16 +93,18 @@ console.log("\nDemo/feature modules hiện có (tự xóa module không dùng �
 for (const m of demoModules) {
   const routes = routesFor(m);
   const rmRoute = routes.length
-    ? routes.map((r) => `rm -rf "src/app/(admin)/${r}"`).join(" && ")
+    ? routes.map((r) => `rm -rf "apps/web/src/app/(admin)/${r}"`).join(" && ")
     : `(không có route)`;
   console.log(`  • ${m}`);
-  console.log(`      rm -rf src/features/${m}${routes.length ? ` && ${rmRoute}` : ""}`);
+  console.log(`      rm -rf apps/web/src/features/${m}${routes.length ? ` && ${rmRoute}` : ""}`);
 }
 
 console.log(`
 Tiếp theo:
   1. Xóa các demo module không dùng (lệnh ở trên) + bỏ entry menu tương ứng trong
-     src/components/layout/nav-items.tsx
-  2. Copy module mẫu: cp -r src/features/_template src/features/<domain-mới>
+     apps/web/src/core/layout/nav-items.tsx
+  2. Copy module mẫu:
+     cp -r apps/web/src/features/_template apps/web/src/features/<domain-mới>
+     cp -r apps/api/src/features/_template apps/api/src/features/<domain-mới>
   3. npm run dev — bắt đầu nghiệp vụ đầu tiên.
 `);
